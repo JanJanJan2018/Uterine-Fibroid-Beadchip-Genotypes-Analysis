@@ -1,0 +1,212 @@
+---
+title: "Uterine Leiomyoma Beadchip Gene Expressions"
+author: "Janis Corona"
+date: "2/23/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+This is to re-examine the UL and non-UL samples from the Gene Expression Omnibus online data repository (GEO) for genotypes in the ULs compared to those samples without tumor tissue in them. The accession IDs for the Series is [GSE95101](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE95101) and for the platform is [GPL13376](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GPL13376) 
+
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+library(dplyr)
+library(tidyr)
+
+```
+
+
+```{r, message=FALSE, error=FALSE, warning=FALSE}
+
+UL1a <- read.csv('UL1a.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+UL1b <- read.csv('UL1b.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+UL1c <- read.csv('UL1c.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+UL1d <- read.csv('UL1d.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+
+UL1 <- rbind(UL1a,UL1b,UL1c,UL1d)
+rm(UL1a,UL1b,UL1c,UL1d)
+str(UL1)
+```
+
+
+```{r, message=FALSE, error=FALSE, warning=FALSE}
+nonUL1a <- read.csv('nonUL1a.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+nonUL1b <- read.csv('nonUL1b.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+nonUL1c <- read.csv('nonUL1c.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+nonUL1d <- read.csv('nonUL1d.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+
+nonUL1 <- rbind(nonUL1a,nonUL1b,nonUL1c,nonUL1d)
+
+rm(nonUL1a,nonUL1b,nonUL1c,nonUL1d)
+str(nonUL1)
+```
+
+
+```{r}
+UL <- UL1[,-c(1:13,15:19,21,29:31)]
+nonUL <- nonUL1[,-c(1:13,15:19,21,29:31)]
+
+```
+
+
+```{r}
+write.csv(UL,'UL.csv', row.names=FALSE)
+write.csv(nonUL, 'nonUL.csv', row.names=FALSE)
+
+```
+
+
+```{r}
+fibroid <- read.csv('UL.csv', sep=',', header=T, na.strings=c('',' '))
+nonFibroid <- read.csv('nonUL.csv', sep=',', header=T, na.strings=c('',' '))
+
+```
+
+
+```{r}
+fibroid_gene_n <- fibroid %>% group_by(Symbol) %>% count(n())
+narm <- grep('^NA$',fibroid_gene_n$Symbol)
+
+fibroid1 <- fibroid_gene_n[-narm,-2]
+colnames(fibroid1)[2] <- 'gene_count'
+
+NONfibroid_gene_n <- nonFibroid %>% group_by(Symbol) %>% count(n())
+narm1 <- grep('^NA$',NONfibroid_gene_n$Symbol)
+
+nonFibroid1 <- NONfibroid_gene_n[-narm1,-2]
+colnames(nonFibroid1)[2] <- 'gene_count'
+
+GeneCopyNumberVariants <- fibroid1[order(fibroid1$gene_count,decreasing=TRUE)[1:10],]
+GeneCopyNumberVariants
+```
+
+Combine the gene counts with the tables of samples for each type of UL or nonUL.
+```{r}
+Fibroid_count <- merge(fibroid1, fibroid, by.x='Symbol', by.y='Symbol')
+nonFibroid_count <- merge(nonFibroid1, nonFibroid, by.x='Symbol', by.y='Symbol')
+Fibroid_count[order(Fibroid_count$gene_count, decreasing=TRUE)[1:20],1:3]
+```
+
+Add a mean, median, min, and max column to these tables.
+```{r}
+Fibroid_count$Fibroid_Mean <- rowMeans(Fibroid_count[11:30])
+nonFibroid_count$nonFibroid_Mean <- rowMeans(nonFibroid_count[11:28])
+
+```
+
+Use the tidyr package to group by sample ID by gathering those columns into one.
+```{r}
+UL_3 <- gather(Fibroid_count, 'UL_Sample_ID','Value',11:30)
+nonUL_3 <- gather(nonFibroid_count, 'nonUL_Sample_ID', 'Value',11:28)
+
+
+```
+
+Create the stat tables then combine for the UL and nonUL sample sets using the dplyr package.
+```{r}
+UL_median <- UL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), median)
+colnames(UL_median)[2] <- 'Fibroid_Median'
+
+nonUL_median <- nonUL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), median)
+colnames(nonUL_median)[2] <- 'nonFibroid_Median'
+
+UL_max <- UL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), max)
+colnames(UL_max)[2] <- 'Fibroid_max'
+
+nonUL_max <- nonUL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), max)
+colnames(nonUL_max)[2] <- 'nonFibroid_max'
+
+UL_min <- UL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), min)
+colnames(UL_min)[2] <- 'Fibroid_min'
+
+nonUL_min <- nonUL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), min)
+colnames(nonUL_min)[2] <- 'nonFibroid_min'
+
+UL_sd <- UL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), sd)
+colnames(UL_sd)[2] <- 'Fibroid_stdError'
+
+nonUL_sd <- nonUL_3 %>% group_by(SEQUENCE) %>% summarise_at(vars(Value), sd)
+colnames(nonUL_sd)[2] <- 'nonFibroid_stdError'
+```
+
+Combine these four tables together.
+```{r}
+Fibroid_stats <- merge(UL_median, UL_max, by.x='SEQUENCE', by.y='SEQUENCE')
+Fibroid_stats1 <- merge(Fibroid_stats, UL_min, by.x='SEQUENCE', by.y='SEQUENCE')
+Fibroid_stats2 <- merge(Fibroid_count, Fibroid_stats1, by.x='SEQUENCE', by.y='SEQUENCE')
+Fibroid_stats3 <- merge(Fibroid_stats2, UL_sd, by.x='SEQUENCE', by.y='SEQUENCE')
+colnames(Fibroid_stats3)[11:30] <- paste('UL_', colnames(Fibroid_stats3)[11:30], sep='')
+
+nonFibroid_stats <- merge(nonUL_median, nonUL_max, by.x='SEQUENCE', by.y='SEQUENCE')
+nonFibroid_stats1 <- merge(nonFibroid_stats, nonUL_min, by.x='SEQUENCE', by.y='SEQUENCE')
+nonFibroid_stats2 <- merge(nonFibroid_count, nonFibroid_stats1, by.x='SEQUENCE', by.y='SEQUENCE')
+nonFibroid_stats3 <- merge(nonFibroid_stats2, nonUL_sd, by.x='SEQUENCE', by.y='SEQUENCE')
+colnames(nonFibroid_stats3)[11:28] <- paste('nonUL_', colnames(nonFibroid_stats3)[11:28], sep='')
+
+
+nonfibroid <- nonFibroid_stats3[,c(1,11:33)]
+all <- merge(Fibroid_stats3, nonfibroid, by.x='SEQUENCE', by.y='SEQUENCE')
+str(all)
+```
+
+Lets change the 'fibroid' in the column names to 'UL' for uterine leiomyoma.
+```{r}
+colnames(all) <- gsub('Fibroid', 'UL', colnames(all))
+
+```
+
+Reorder the table so that the stats are at the end of the columns.
+```{r}
+All <- all[,c(1:10,11:30, 36:53,31:35,54:58)]
+str(All)
+```
+
+```{r}
+All_stats_only <- All[,c(1,2,3,49:58)]
+stats_all <- All_stats_only[!duplicated(All_stats_only),]
+
+stats_all$foldChange_UL_to_nonUL <- stats_all$UL_Mean/stats_all$nonUL_Mean
+
+FoldChangeGenes <- stats_all[order(stats_all$foldChange_UL_to_nonUL,  decreasing=TRUE)[c(1:5,30545:30549)],]
+
+FoldChangeGenes
+```
+
+```{r}
+str(stats_all)
+```
+
+
+
+```{r}
+write.csv(stats_all, 'stats_only_UL_nonUL.csv', row.names=FALSE)
+```
+
+Combine the table of top and bottom five genes in fold change values of the ratio of UL to non-UL sample means, FoldChangeGenes, with the table of the ten genes having the highest number of copy number variations or genotypes, GeneCopyNumberVariants.
+```{r}
+ontology <- nonFibroid[,c(1,6:9)]
+gnc <- as.data.frame(GeneCopyNumberVariants)[1]
+
+keyGenes1 <- merge(gnc, stats_all, by.x='Symbol', by.y='Symbol')
+
+keyGenes1a <- merge(keyGenes1, ontology, by.x='Symbol', by.y='Symbol')
+
+keyGenes2 <- merge(FoldChangeGenes, ontology, by.x='Symbol', by.y='Symbol')
+keyGenes2a <- keyGenes2[,c(1:3,15:18,4:14)]
+keyGenes1b <- keyGenes1a[,c(1:3,15:18,4:14)]
+
+KeyGenes <- rbind(keyGenes2a, keyGenes1b)
+KG <- KeyGenes[!duplicated(KeyGenes$SEQUENCE),]
+KG1 <- KG[order(KG$foldChange_UL_to_nonUL, decreasing=TRUE),]
+write.csv(KG1,'keyGenes_UL_FCs_CNVs.csv', row.names=FALSE)
+KG1
+```
+
