@@ -176,4 +176,4 @@ stats_all <- All_stats_only[!duplicated(All_stats_only),]
 
 stats_all$foldChange_UL_to_nonUL <- stats_all$UL_Mean/stats_all$nonUL_Mean
 
-
+write.csv(stats_all, 'UL_nonUL_beadchip_stats.csv', row.names=FALSE)

@@ -1,0 +1,132 @@
+---
+title: "UL Beadchip CNVs FC Analysis in MySQL"
+author: "Janis Corona"
+date: "3/24/2020"
+output: html_document
+---
+
+This script uses MySQL via RMariaDb package and MySQL. 
+This script to use MySQL within RStudio from: 
+https://programminghistorian.org/en/lessons/getting-started-with-mysql-using-r
+
+```{r, error=FALSE, message=FALSE, warning=FALSE}
+library(RMariaDB)
+library(tidyverse)
+library(DT)
+library(stringr)
+```
+
+```{r}
+UL_data <- read.csv('UL_nonUL_beadchip_stats.csv', sep=',',header=TRUE, na.strings=c('',' ','NA'))
+colnames(UL_data) <- c("SEQUENCE",
+                       "SYMBOL",
+                       "GENE_COUNT",
+                       "UL_MEAN",
+                       "UL_MEDIAN",
+                       "UL_MAX",
+                       "UL_MIN",
+                       "UL_SE",
+                       "nonUL_MEAN",
+                       "nonUL_MEDIAN",
+                       "nonUL_MAX",
+                       "nonUL_MIN",
+                       "nonUL_SE",
+                       "FOLDCHANGE_MEAN_UL_to_nonUL")
+head(UL_data,30)
+```
+
+```{r}
+pretty_headers <- str_to_title(colnames(UL_data))
+
+UL_data1 <- datatable(data=UL_data,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+UL_data1
+```
+
+Connect to MySQL database.
+```{r,error=FALSE, message=FALSE, warning=FALSE}
+
+ULsDb <- dbConnect(RMariaDB::MariaDB(), 
+                       user='newuser', 
+                       password='2020mystery$', 
+                       dbname='UL_data', 
+                       host='localhost')
+dbListTables(ULsDb)
+
+
+
+```
+
+```{r,error=FALSE, message=FALSE, warning=FALSE}
+query <- "CREATE TABLE ul_data.ul_data (
+SEQUENCE CHAR(99),
+SYMBOL CHAR(25),
+GENE_COUNT INT,
+UL_MEAN FLOAT,
+UL_MEDIAN FLOAT,
+UL_MAX FLOAT,
+UL_MIN FLOAT,
+UL_SE FLOAT,
+nonUL_MEAN FLOAT,
+nonUL_MEDIAN FLOAT,
+nonUL_MAX FLOAT,
+nonUL_MIN FLOAT,
+nonUL_SE FLOAT,
+FOLDCHANGE_MEAN_UL_to_nonUL FLOAT
+);"
+
+rsInsert <- dbSendQuery(ULsDb, query)
+dbClearResult(rsInsert)
+
+```
+
+
+```{r,error=FALSE, message=FALSE, warning=FALSE}
+#write the csv data from the UL_data file into the ul_data SQL table
+dbWriteTable(ULsDb, value = UL_data, row.names = FALSE, name = "ul_data", append = TRUE )
+
+```
+
+Get those genes with Copy Number Variants (CNVs) greater than 2 and Fold change of the mean of UL gene expression to nonUL gene expression greater than 1.5 or a 50% increase in UL compared to nonUL. Note that the GENE_COUNT column is the CNV count as it is a count of the number of times the gene symbol is in the data with the attached gene sequence for each gene. Notice the sequences are not exact for each gene symbol.
+```{r}
+query <- "select SEQUENCE,SYMBOL,GENE_COUNT,FOLDCHANGE_MEAN_UL_to_nonUL FROM ul_data.ul_data
+WHERE( FOLDCHANGE_MEAN_UL_to_nonUL > 1.5 AND GENE_COUNT>2)
+ORDER BY GENE_COUNT DESC,FOLDCHANGE_MEAN_UL_to_nonUL DESC LIMIT 30;"
+
+rs = dbSendQuery(ULsDb,query)
+
+dbRows<-dbFetch(rs)
+
+```
+
+The top 30 results of gene sequences and gene symbols with respective CNV counts and fold change values.
+```{r}
+dbRows
+```
+
+For re-running the script we need to delete/drop the database and tables.
+```{r,error=FALSE, message=FALSE, warning=FALSE}
+dbClearResult(rsInsert)
+
+dbListTables(ULsDb)
+
+dbClearResult(rsInsert)
+
+query <- "DROP TABLE ul_data.ul_data;"
+rsInsert <- dbSendQuery(ULsDb, query)
+
+dbClearResult(rsInsert)
+
+dbDisconnect(ULsDb)
+
+```
+
+This Rmarkdown script showed the UL data of gene expressions in a DT interactive table, and by attaching to MySQL to get the top 30 highest fold change and copy number variant genes in the samples this study examined.
+

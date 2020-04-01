@@ -1,0 +1,6 @@
+[newspaper_search_results]
+user='root'
+password='miss1234'
+host=127.0.0.1
+port=3306
+database=newspaper_search_results

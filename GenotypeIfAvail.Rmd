@@ -3,16 +3,24 @@ title: "Uterine Leiomyoma Beadchip Gene Expressions"
 author: "Janis Corona"
 date: "2/23/2020"
 output:
-  word_document: default
   html_document: default
+  word_document: default
 ---
 
 This is to re-examine the UL and non-UL samples from the Gene Expression Omnibus online data repository (GEO) for genotypes in the ULs compared to those samples without tumor tissue in them. The accession IDs for the Series is [GSE95101](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE95101) and for the platform is [GPL13376](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GPL13376) 
 
+Lets look at some of these copy number variants of one gene with seven [copy number variants](https://en.wikipedia.org/wiki/Copy-number_variation) or CNVs and see where the changes in the nucleotide sequences occur. Copy number variations in nucleotides can have short repeats, jumps in sequence, or deletions of a gene. I have been calling these CNVs [genotypes](https://en.wikipedia.org/wiki/Genotype), which are the traits and alleles responsible for the physical traits or phenotypes of an organism. Some CNVs are responsible for diseases, and in tumors there are many different CNVs that are found to be responsible. A uterine leiomyoma or fibroid is a benign tumor. These samples were taken from uterus tissue with these uternine tumors and the same neighboring uterine tissue without uterine tumors.
+
 ```{r, warning=FALSE, error=FALSE, message=FALSE}
 library(dplyr)
 library(tidyr)
-
+library(e1071)
+library(caret)
+library(randomForest)
+library(MASS)
+library(gbm)
+library(DT)
+library(stringr)
 ```
 
 
@@ -173,9 +181,9 @@ str(All)
 All_stats_only <- All[,c(1,2,3,49:58)]
 stats_all <- All_stats_only[!duplicated(All_stats_only),]
 
-stats_all$foldChange_UL_to_nonUL <- stats_all$UL_Mean/stats_all$nonUL_Mean
+stats_all$foldChangeMean_UL_to_nonUL <- stats_all$UL_Mean/stats_all$nonUL_Mean
 
-FoldChangeGenes <- stats_all[order(stats_all$foldChange_UL_to_nonUL,  decreasing=TRUE)[c(1:5,30545:30549)],]
+FoldChangeGenes <- stats_all[order(stats_all$foldChangeMean_UL_to_nonUL,  decreasing=TRUE)[c(1:5,30545:30549)],]
 
 FoldChangeGenes
 ```
@@ -205,8 +213,989 @@ keyGenes1b <- keyGenes1a[,c(1:3,15:18,4:14)]
 
 KeyGenes <- rbind(keyGenes2a, keyGenes1b)
 KG <- KeyGenes[!duplicated(KeyGenes$SEQUENCE),]
-KG1 <- KG[order(KG$foldChange_UL_to_nonUL, decreasing=TRUE),]
-write.csv(KG1,'keyGenes_UL_FCs_CNVs.csv', row.names=FALSE)
-KG1
+KG1 <- KG[order(KG$foldChangeMean_UL_to_nonUL, decreasing=TRUE),]
+KG1[,c(1:3,18)]
 ```
+
+```{r}
+write.csv(KG1,'keyGenes_UL_FCs_CNVs.csv', row.names=FALSE)
+```
+
+Order by gene count, then by fold change.
+```{r}
+KG2 <- KG1[with(KG1, order(gene_count, foldChangeMean_UL_to_nonUL, decreasing=TRUE)),]
+```
+
+Lets add in a fold change of the median value ratios of UL to non-UL samples to compare.
+```{r}
+colnames(KG2)[18] <- 'foldChange_Mean'
+KG2$foldChange_Median <- KG2$UL_Median/KG2$nonUL_Median
+
+```
+
+
+Lets look at some of these copy number variants of one gene with seven [copy number variants](https://en.wikipedia.org/wiki/Copy-number_variation) or CNVs and see where the changes in the nucleotide sequences occur. Copy number variations in nucleotides can have short repeats, jumps in sequence, insertions, or deletions of a gene. I have been calling these CNVs [genotypes](https://en.wikipedia.org/wiki/Genotype), which are the traits and alleles responsible for the physical traits or phenotypes of an organism. Some CNVs are responsible for diseases, and in tumors there are many different CNVs that are found to be responsible. A uterine leiomyoma or fibroid is a benign tumor. These samples were taken from uterus tissue with these uternine tumors and the same neighboring uterine tissue without uterine tumors.
+```{r}
+CTNNB1 <- subset(KG2, KG2$Symbol=='CTNNB1')
+CTNNB1_seq <- CTNNB1[,1:2]
+```
+
+
+Add in a column to describe the length of the nucleotides in each copy number variant nucleotide strand.
+```{r}
+CTNNB1_seq$SEQUENCE <- as.character(CTNNB1$SEQUENCE)
+
+CTNNB1_seq$nChar <- nchar(CTNNB1_seq$SEQUENCE)
+```
+
+Lets look at the CNVs of the CTNNB1 gene.
+```{r}
+CTNNB1_seq
+```
+
+From the above, some of the CNVs make you wonder if they are even the same gene. The first two have the same pattern of 'CTGCAGGG' then some variations. Then its not obvious what the other sequence alignments are. We could go back to the cytoband location and where the gene starts to see if there is more information.
+
+Lets get the SEQUENCE, protein product, and cytoband columns from the original UL1 table.
+```{r}
+cytoband <- UL1[,c(15,20,24)]
+```
+
+Now combine with the CTNNB1_seq and the KG2 table.
+```{r}
+CTNNB1_cyto <- merge(cytoband, CTNNB1_seq, by.x='SEQUENCE', by.y='SEQUENCE')
+KG2_cyto <- merge(cytoband, KG2, by.x='SEQUENCE', by.y='SEQUENCE')
+
+
+```
+
+Now lets look at the KG2_cyto table to see where these CNVs are located within the cytoband of each gene location.
+```{r}
+KG3 <- KG2_cyto[with(KG2_cyto, order(gene_count,foldChange_Mean, decreasing = TRUE)),]
+KG3[,1:5]
+
+```
+
+```{r}
+CTNNB1_b <- subset(KG3, KG3$Symbol=='CTNNB1')
+CTNNB1_b[,c(1:5,20:21)]
+```
+
+The cytoband location of each of these CNVs for CTNNB1 is the same location on chromosome 3 on the p strand/direction along 22.1b. Also, the fold change for the mean and median values for the first listed CNVs changed by 16-57 percent more in UL compared to non-UL samples. This could mean that these four CNVs of the gene CTNNB1 offer some clues as to what mutations or changes impact risk in developing uterine leiomyomas for some females.
+
+Lets order the key genes by fold change median then by CNVs.
+```{r}
+KG4 <- KG3[with(KG3, order(foldChange_Median, gene_count, decreasing = TRUE)),]
+KG4[,c(1:5,21)]
+```
+
+The above table gives the protein products, the ontology function, the fold change of the median values of UL/nonUL, gene symbol, sequence of CNV, and cytoband location. The protein products can be found at genecards.org by entering the ID for the protein product into the search bar. A quick scan of a few of the protein products in genecards.org gave the following descriptions. The first listed protein NP_061159.1 says it is a colon cancer secreted protein. Many of the above CNVs are listed as proteins involved in the extracellular matrix like DMD and CTNNB1. There are also various neurological and synapses diseases associated with those proteins.
+
+The site genecards.org has very useful properties in analyzing gene expression data from this research. If you are a member, you can download the network genes involved in diseases you query and compare to how the genes in certain tissues compare to those genes. Three out of the seven CNVs for CTNNB1 are in the top fold change median values in the ratio of UL/nonUL samples.
+
+
+```{r}
+write.csv(KG4, 'keyGenes_topMedFCs.csv', row.names=FALSE)
+```
+
+
+***
+
+Lets make a machine learning data set to test various algorithms on predicting if the sample is a UL or not. We will use the samples in this set, plus add in some microarray samples that have been studied by me elsewhere using this set of genes and sequences if available in any of the microarray studies.
+
+Lets isolate those genes that are in our key genes of top picks for UL targets and combine the UL and nonUL sample information to those genes and sequences without the stats.
+```{r}
+keyTargets <- KG4[,c(1,4)]
+
+ULs <- UL[,c(2,10:29)]
+colnames(ULs)[2:21] <- paste('UL', colnames(ULs)[2:21], sep='_')
+
+nonULs <- nonUL[,c(2,10:27)]
+colnames(nonULs)[2:19] <- paste('nonUL', colnames(nonULs)[2:19], sep='_')
+
+keyULs <- merge(keyTargets, ULs, by.x='SEQUENCE', by.y='SEQUENCE')
+keys <- merge(keyULs, nonULs, by.x='SEQUENCE', by.y='SEQUENCE')
+
+write.csv(keys,'keyGeneTargetsCNVs.csv',row.names=FALSE)
+```
+
+Lets create the matrix for machine learning.
+```{r}
+keysNames <- paste(keys$Symbol,keys$SEQUENCE, sep='_')
+keys0 <- keys[,-(1:2)]
+keys_ml <- as.data.frame(t(keys0))
+colnames(keys_ml) <- keysNames
+keys_ml$Type <- as.factor(c(rep('UL',length(grep('^UL_',row.names(keys_ml)))),
+                   rep('nonUL',length(grep('^nonUL_',row.names(keys_ml))))))
+keys_ml0 <- keys_ml[,c(88,1:87)]
+
+write.csv(keys_ml0, 'ml_ready_UL_classes.csv',row.names=TRUE)
+
+pretty_headers <- str_to_title(colnames(keys_ml0))
+keys_ml0a <- datatable(data=keys_ml0,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=I('colvis'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+keys_ml0a
+```
+
+Now, lets pull in the other data sets that are from the microarray samples and see if we can get the genes and sequences that correspond to our key genes above in identifying a sample as UL or not with predictive analytics.
+
+There is one study of the other studies that has Sequence, Gene symbol and a few UL and nonUL microarray samples to compare to this above beadchip UL and nonUL set. The GEO series ID is GSE68295 with the GEO platform of GPL6480. The files are 27 MB each in file size.
+```{r}
+setwd('./microArray UL')
+
+non <- read.csv('nonUL_GSE68295_GPL6480_table.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+uls <- read.csv('UL_GSE68295_GPL6480_table.csv', sep=',', 
+                header=T, na.strings=c('',' '))
+setwd('../')
+```
+
+Keep only the needed columns.
+```{r}
+uls_array <- uls[,c(8,18:21)]
+colnames(uls_array)[3:5] <- paste('UL', colnames(uls_array)[3:5], sep='_')
+
+non_array <- non[,c(8,18:21)]
+colnames(non_array)[3:5] <- paste('nonUL', colnames(non_array)[3:5], sep='_')
+```
+
+The sequences don't align or match any in the microarrays with the beadchip UL samples.
+```{r}
+uls_array0 <- merge(keyTargets, uls_array, by.x='SEQUENCE', by.y='SEQUENCE')
+ulsArray0 <- uls_array0[,-2]
+```
+
+Match by gene symbol between the microarray and beadchip UL samples.
+```{r}
+uls_array1 <- merge(keyTargets, uls_array, by.x='Symbol', by.y='GENE_SYMBOL')
+ulsArray <- uls_array1[,-2]
+```
+
+The sequences don't align between the arrays and beadchip samples for nonULs.
+```{r}
+non_array0 <- merge(keyTargets, non_array, by.x='SEQUENCE', by.y='SEQUENCE')
+nonArray0 <- non_array0[,-(1:2)]
+```
+
+Match by Gene symbol between the microarray and beadchip samples of nonULs.
+```{r}
+non_array1 <- merge(keyTargets, non_array, by.x='Symbol', by.y='GENE_SYMBOL')
+nonArray <- non_array1[,-(1:2)]
+```
+
+Combine the UL and nonUL samples of the microarrays into one dataset.
+```{r}
+microarrays <- merge(ulsArray, nonArray, by.x='SEQUENCE.y', by.y='SEQUENCE.y')
+Marrays <- microarrays[!duplicated(microarrays$SEQUENCE),]
+Marrays
+
+pretty_headers <- str_to_title(colnames(Marrays))
+Marrays1 <- datatable(data=Marrays,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=I('colvis'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Marrays1
+
+```
+
+Since these two expression types can't be compared by sequence, they should be compared by gene. Lets combine them into a study by gene expression values.
+```{r}
+keys1 <- keys[,-1]
+keys2 <- keys1 %>% group_by(Symbol) %>%
+  summarise_at(vars(as.vector(colnames(keys1)[2:39])), mean)
+
+Marrays1 <- Marrays[,-1]
+Marrays2 <- Marrays1 %>% group_by(Symbol) %>%
+  summarise_at(vars(as.vector(colnames(Marrays1)[2:7])), mean)
+
+beadArrays <- merge(keys2, Marrays2, by.x='Symbol', by.y='Symbol')
+
+pretty_headers <- str_to_title(colnames(beadArrays))
+beadArrays1 <- datatable(data=beadArrays,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+beadArrays1
+
+```
+
+There are only 12 genes in common among these combined samples of microarray and beadchip UL and nonUL samples.
+```{r}
+names <- (beadArrays$Symbol)
+beadArrays1 <- beadArrays[,-1]
+beadArrays_ML <- as.data.frame(t(beadArrays1))
+colnames(beadArrays_ML) <- names
+
+beadArrays_ML$Type <- as.factor(c(rep('UL_bead',20), rep('nonUL_bead',18),
+                         rep('UL_array',3), rep('nonUL_array',3)))
+beadArrays_ML2 <- beadArrays_ML[,c(13,1:12)]
+
+pretty_headers <- str_to_title(colnames(beadArrays_ML2))
+beadArrays_ML3 <- datatable(data=beadArrays_ML2,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+beadArrays_ML3
+
+```
+
+```{r}
+UL_seq_ML <- keys_ml0
+UL_gene_ML <- beadArrays_ML2
+
+```
+
+***
+
+There are two datasets to use for machine learning. The first is our beadchip samples of 88 sequences and 38 samples of 20 UL and 18 nonUL in the **UL_seq_ML** data set. The second dataset for machine learning is the mixed microarray and beadchip samples of UL and nonUL by gene in the **UL_gene_ML** data set, because there were no common sequence or copy number variants of the gene sequences between the beadchip and microarray sets of UL and nonUL samples.
+
+The libraries were installed earlier.
+```{r}
+set.seed(12356789)
+
+```
+
+Create a partition of the data with a 70/30 split into training/testing sets of the first data set with two classes of UL or nonUL and 88 features of genes with their CNVs.
+```{r}
+inTrain <- createDataPartition(y=UL_seq_ML$Type, p=0.7, list=FALSE)
+
+trainingSet <- UL_seq_ML[inTrain,]
+testingSet <- UL_seq_ML[-inTrain,]
+
+```
+
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(Type~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+plot(rfMod)
+```
+
+
+
+
+Run predictions on the testing set
+```{r}
+predRF <- predict(rfMod, testingSet)
+
+predDF <- data.frame(predRF, type=testingSet$Type)
+predDF
+
+sum <- sum(predRF==testingSet$Type) 
+length <- length(testingSet$Type)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+```
+
+The above shows that using the genes and the CNV of each gene totalling 88 features, makes a perfect data set of results with only 27 observations to train and 11 to test on 2 classes of UL or non-UL. Using only the random forest algorithm it classified each sample 100% accurately trained on 70% of the samples.
+
+What if we used random forest to only predict by gene in the first beadchip type data set?
+We can use the transpose of the keys2 data set made earlier when combining to make the 2nd ML dataset.
+```{r}
+names <- keys2$Symbol
+keys_2 <- keys2[,-1]
+keys_t <- as.data.frame(t(keys_2))
+colnames(keys_t) <- names
+keys_t$Type <- keys_ml$Type
+keys_ML <- keys_t[,c(21,1:20)]
+```
+
+Now we will use our new data set based on the beadchip genes and not the CNVs of those genes, in the keys_ML data set to predict with RandomForest.
+```{r}
+inTrain <- createDataPartition(y=keys_ML$Type, p=0.7, list=FALSE)
+
+trainingSet <- keys_ML[inTrain,]
+testingSet <- keys_ML[-inTrain,]
+
+```
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(Type~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+plot(rfMod)
+```
+
+
+Run predictions on the testing set
+```{r}
+predRF <- predict(rfMod, testingSet)
+
+predDF <- data.frame(predRF, type=testingSet$Type)
+predDF
+
+sum <- sum(predRF==testingSet$Type) 
+length <- length(testingSet$Type)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+```
+
+From the above table, the random forest algorithm only misclassified one sample as nonUL, when it was really a UL sample. This data set used the mean values of the genes and not the copy number variants of each gene as the previous data set we just used was built on. So, a true positive was misclassified as a negative. This means its a false negative or Type II error. If it had misclassified a nonUL as UL then it would be a Type I error for false positive. There is a good [article](https://towardsdatascience.com/taking-the-confusion-out-of-confusion-matrices-c1ce054b3d3e) to review material you never really use, until time to write a theoretical research paper. The values are good to know for precision and recall, and sensitivity and specificity. Depending on what your overarching goal is in sampling outcomes, you want to improve one more than the other. 
+
+How about with the KNN algorithm.
+```{r}
+knnMod <- train(Type ~ .,
+                method='knn', preProcess=c('center','scale'),
+                tuneLength=10, trControl=trainControl(method='cv'), data=trainingSet)
+plot(knnMod)
+```
+
+
+
+```{r}
+rpartMod <- train(Type ~ ., method='rpart', tuneLength=7, data=trainingSet) 
+```
+
+```{r, message=FALSE, warning=FALSE, error=FALSE}
+glmMod <- train(Type ~ ., 
+                method='glm', data=trainingSet) 
+```
+
+
+```{r, warning=FALSE}
+predKNN <- predict(knnMod, testingSet)
+predRPART <- predict(rpartMod, testingSet)
+predGLM <- predict(glmMod, testingSet)
+```
+
+
+```{r}
+length=length(testingSet$Type)
+
+sumKNN <- sum(predKNN==testingSet$Type)
+sumRPart <- sum(predRPART==testingSet$Type)
+sumGLM <- sum(predGLM==testingSet$Type)
+
+accuracy_KNN <- sumKNN/length 
+accuracy_RPART <- sumRPart/length 
+accuracy_GLM <- sumGLM/length 
+
+predDF2 <- data.frame(predRF,predKNN,predRPART,predGLM, 
+                      TYPE=testingSet$Type)
+colnames(predDF2) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+
+results <- c(round(accuracy_rfMod,2),  
+             round(accuracy_KNN,2), 
+             round(accuracy_RPART,2),
+             round(accuracy_GLM,2), 
+             round(100,2))
+
+results <- as.factor(results)
+results <- t(data.frame(results))
+colnames(results) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+Results <- rbind(predDF2, results) 
+Results
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+```
+
+
+As far as the algorithms used above go, the prediction accuracy is great for Random Forest, GLM, and K-Nearest Neighbor with 91% accuracy. Make sure to remove any fields before transposing such as the symbol field when keeping the samples as numeric. Because the numeric sample values will be factors, and throw off the algorithms. Or you could manually change each of the class types of the above genes above. Rpart, or recursive partitioning trees did the worst with 64% accuracy.
+
+This next data set uses the three most expressed and two lease expressed genes by fold change in UL to nonUL sample means.
+```{r}
+keys_ML_b <- keys_ML[,c(1,3,10,11,13,19)]
+
+```
+
+
+```{r}
+inTrain <- createDataPartition(y=keys_ML_b$Type, p=0.7, list=FALSE)
+
+trainingSet <- keys_ML_b[inTrain,]
+testingSet <- keys_ML_b[-inTrain,]
+
+```
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(Type~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+plot(rfMod)
+```
+
+
+Run predictions on the testing set
+```{r}
+predRF <- predict(rfMod, testingSet)
+
+predDF <- data.frame(predRF, type=testingSet$Type)
+predDF
+
+sum <- sum(predRF==testingSet$Type) 
+length <- length(testingSet$Type)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+```
+
+
+How about with the KNN algorithm.
+```{r}
+knnMod <- train(Type ~ .,
+                method='knn', preProcess=c('center','scale'),
+                tuneLength=10, trControl=trainControl(method='cv'), data=trainingSet)
+plot(knnMod)
+```
+
+The accuracy seems to be better between 5 and 17 neighbors for classification from what the above plot is displaying.
+
+```{r}
+rpartMod <- train(Type ~ ., method='rpart', tuneLength=7, data=trainingSet) 
+```
+
+```{r, message=FALSE, warning=FALSE, error=FALSE}
+glmMod <- train(Type ~ ., 
+                method='glm', data=trainingSet) 
+```
+
+
+```{r, warning=FALSE}
+predKNN <- predict(knnMod, testingSet)
+predRPART <- predict(rpartMod, testingSet)
+predGLM <- predict(glmMod, testingSet)
+```
+
+
+```{r}
+length=length(testingSet$Type)
+
+sumKNN <- sum(predKNN==testingSet$Type)
+sumRPart <- sum(predRPART==testingSet$Type)
+sumGLM <- sum(predGLM==testingSet$Type)
+
+accuracy_KNN <- sumKNN/length 
+accuracy_RPART <- sumRPart/length 
+accuracy_GLM <- sumGLM/length 
+
+predDF2 <- data.frame(predRF,predKNN,predRPART,predGLM, 
+                      TYPE=testingSet$Type)
+colnames(predDF2) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+
+results <- c(round(accuracy_rfMod,2),  
+             round(accuracy_KNN,2), 
+             round(accuracy_RPART,2),
+             round(accuracy_GLM,2), 
+             round(100,2))
+
+results <- as.factor(results)
+results <- t(data.frame(results))
+colnames(results) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+Results <- rbind(predDF2, results) 
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+```
+
+The above data shows that using the three highest fold change and lowest fold change genes to predict the sample as a UL or not scored 100% accuracy for GLM and Random Forest. And the KNN and Rpart scored 91% accuracy. Make sure to set your seed to the same value so you don't get different results when re-running the algorithms above, because the first seed was set by me and I got different results where KNN scored 100% and GLM and Random Forest scored 82% accuracy.
+***
+
+Lets go back to the data that placed the fold change values by mean of the sequence values.
+```{r}
+fib <- fibroid[,c(1,10:29)]
+fib_mean <- fib %>% group_by(Symbol) %>% 
+  summarise_at(vars(as.vector(colnames(fib)[2:21])), mean, na.rm=TRUE)
+fib_mean$UL_gene_mean <- rowMeans(fib_mean[2:21])
+colnames(fib_mean)[2:21] <- paste('UL', colnames(fib_mean)[2:21], sep='_')
+
+nfib <- nonFibroid[,c(1,10:27)]
+nfib_mean <- nfib %>% group_by(Symbol) %>%
+  summarise_at(vars(as.vector(colnames(nfib)[2:19])), mean, na.rm=TRUE)
+nfib_mean$nonUL_gene_mean <- rowMeans(nfib_mean[2:19])
+colnames(nfib_mean)[2:19] <- paste('nonUL', colnames(nfib_mean)[2:19], sep='_')
+
+```
+
+```{r}
+fib_nonfib <- merge(fib_mean,nfib_mean, by.x='Symbol', by.y='Symbol')
+fib_nonfib$FC_UL2non <- fib_nonfib$UL_gene_mean/fib_nonfib$nonUL_gene_mean
+Fib_Non <- fib_nonfib[,c(1,22,41,42,2:21,23:40)]
+FC_genes <- Fib_Non[order(Fib_Non$FC_UL2non, decreasing=TRUE)[1:5],]
+FCs <- FC_genes[,c(1,5:42)]
+FCs_t <- as.data.frame(t(FCs))
+colnames(FCs_t) <- FCs$Symbol
+FCs_ML <- FCs_t[-1,]
+FCs_ML$Type <- as.factor(c(rep('UL',20),rep('nonUL',18)))
+FCs_ML1 <- FCs_ML[,c(6,1:5)]
+head(FCs_ML1)
+```
+
+Now lets try these algorithms again, to see if they provide better results on the top five genes with the highest fold change values in each gene.
+
+```{r}
+FCs_ML1$KIAA1199 <- as.numeric(FCs_ML1$KIAA1199)
+FCs_ML1$PENK <- as.numeric(FCs_ML1$PENK)
+FCs_ML1$ACTC <- as.numeric(FCs_ML1$ACTC)
+FCs_ML1$MMP11 <- as.numeric(FCs_ML1$MMP11)
+FCs_ML1$DLK1 <- as.numeric(FCs_ML1$DLK1)
+
+```
+
+```{r}
+set.seed(123789)
+inTrain <- createDataPartition(y=FCs_ML1$Type, p=0.7, list=FALSE)
+
+trainingSet <- FCs_ML1[inTrain,]
+testingSet <- FCs_ML1[-inTrain,]
+
+```
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(Type~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+```
+
+
+Run predictions on the testing set
+```{r}
+predRF <- predict(rfMod, testingSet)
+
+predDF <- data.frame(predRF, type=testingSet$Type)
+predDF
+
+sum <- sum(predRF==testingSet$Type) 
+length <- length(testingSet$Type)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+The above table shows that using the set of five genes that had the highest fold change values scored 100% accuracy using the random forest algorithm to predict a sample as being a UL or not.
+
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+```
+
+
+How about with the KNN algorithm.
+```{r, warning=FALSE}
+knnMod <- train(Type ~ .,
+                method='knn', preProcess=c('center','scale'),
+                tuneLength=10, trControl=trainControl(method='cv'), data=trainingSet)
+```
+
+
+```{r}
+rpartMod <- train(Type ~ ., method='rpart', tuneLength=7, data=trainingSet) 
+```
+
+```{r, warning=FALSE}
+glmMod <- train(Type ~ ., 
+                method='glm', data=trainingSet) 
+```
+
+
+```{r, warning=FALSE}
+predKNN <- predict(knnMod, testingSet)
+predRPART <- predict(rpartMod, testingSet)
+predGLM <- predict(glmMod, testingSet)
+```
+
+
+```{r}
+length=length(testingSet$Type)
+
+sumKNN <- sum(predKNN==testingSet$Type)
+sumRPart <- sum(predRPART==testingSet$Type)
+sumGLM <- sum(predGLM==testingSet$Type)
+
+accuracy_KNN <- sumKNN/length 
+accuracy_RPART <- sumRPart/length 
+accuracy_GLM <- sumGLM/length 
+
+predDF2 <- data.frame(predRF,predKNN,predRPART,predGLM, 
+                      TYPE=testingSet$Type)
+colnames(predDF2) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+
+results <- c(round(accuracy_rfMod,2),  
+             round(accuracy_KNN,2), 
+             round(accuracy_RPART,2),
+             round(accuracy_GLM,2), 
+             round(100,2))
+
+results <- as.factor(results)
+results <- t(data.frame(results))
+colnames(results) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+Results <- rbind(predDF2, results) 
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+```
+
+The random forest classifier scored 100% accuracy, while KNN, Rpart, and GLM algorithms all scored 82% accuracy in predicting a sample as uL or not. 
+
+***
+
+Lets use the data set with four classes to predict in the mixed beadchip and microarray samples as either UL or nonUL in their respective medium.
+```{r}
+set.seed(123789)
+inTrain <- createDataPartition(y=UL_gene_ML$Type, p=0.7, list=FALSE)
+
+trainingSet <- UL_gene_ML[inTrain,]
+testingSet <- UL_gene_ML[-inTrain,]
+
+```
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(Type~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+```
+
+
+Run predictions on the testing set
+```{r}
+predRF <- predict(rfMod, testingSet)
+
+predDF <- data.frame(predRF, type=testingSet$Type)
+predDF
+
+sum <- sum(predRF==testingSet$Type) 
+length <- length(testingSet$Type)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+```
+
+The above table shows that the random forest algorithm scored 100% accuracy on the four class predictions of our testing set.
+
+How about with the KNN algorithm.
+```{r, warning=FALSE}
+knnMod <- train(Type ~ .,
+                method='knn', preProcess=c('center','scale'),
+                tuneLength=10, trControl=trainControl(method='cv'), data=trainingSet)
+```
+
+
+```{r}
+rpartMod <- train(Type ~ ., method='rpart', tuneLength=7, data=trainingSet) 
+```
+
+```{r, error=FALSE, message=FALSE,warning=FALSE}
+#glmMod <- train(Type ~ ., 
+ #               method='glm', data=trainingSet) 
+glmMod <- glm(Type ~ .,family = binomial(), data=trainingSet, method='glm.fit',)
+GLMpred <- predict.glm(glmMod, type = "response")
+```
+
+The above GLM model is not liking this type of data, predicting the class by the numeric probabilities of the features provided. It seemed to do fine with the other data sets that had two classes and also used numeric data to predict each class factor.
+
+```{r, warning=FALSE}
+predKNN <- predict(knnMod, testingSet)
+predRPART <- predict(rpartMod, testingSet)
+predGLM <- GLMpred
+```
+
+
+```{r}
+length=length(testingSet$Type)
+
+sumKNN <- sum(predKNN==testingSet$Type)
+sumRPart <- sum(predRPART==testingSet$Type)
+sumGLM <- sum(predGLM==testingSet$Type)
+
+accuracy_KNN <- sumKNN/length 
+accuracy_RPART <- sumRPart/length 
+accuracy_GLM <- sumGLM/length 
+
+predDF2 <- data.frame(predRF,predKNN,predRPART,predGLM, 
+                      TYPE=testingSet$Type)
+colnames(predDF2) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+
+results <- c(round(accuracy_rfMod,2),  
+             round(accuracy_KNN,2), 
+             round(accuracy_RPART,2),
+             round(accuracy_GLM,2),
+             round(100,2))
+
+results <- as.factor(results)
+results <- t(data.frame(results))
+colnames(results) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+Results <- rbind(predDF2, results) 
+
+pretty_headers <- str_to_title(colnames(Results))
+Results1 <- datatable(data=Results,  rownames=FALSE,
+                      colnames=pretty_headers,
+                      filter=list(position='top'),
+                      options=list(
+                        dom='Bfrtip',
+                        buttons=c('colvis','csv','excel'),
+                        language=list(sSearch='Filter:')),
+                      extensions=c('Buttons','Responsive')
+                      )
+Results1
+
+
+
+```
+
+The GLM or generalized linear model is used to regress actual predicted numeric values using linear regression and naive bayes type linear models. This could be why its values were numeric the first run and now unable to complete training so it was excluded from results as there were no results for the GLM model. The Random Forest and KNN scored 100% accuracy, and the Rpart scored 91% accuracy. 
+
+
+Lets add in the gene that had the lowest fold change value and use it as an outcome variable to predict the value based on these high fold change values. We will remove the Type field.
+```{r}
+FC_genes1 <- Fib_Non[order(Fib_Non$FC_UL2non)[c(1:2,25032:25036)],]
+row.names(FC_genes1) <- FC_genes1$Symbol
+FC_genes2 <- FC_genes1[-2,]
+FC_genes2_ML <- as.data.frame(t(FC_genes2))
+FCs_ML_4 <- FC_genes2_ML[-c(1:4),]
+write.csv(FCs_ML_4,'ML_highFCs_lowFC.csv', row.names=TRUE)
+```
+
+
+```{r}
+set.seed(123789)
+ML4 <- FCs_ML_4
+ML4$KRT19 <- as.numeric(ML4$KRT19)
+ML4$DLK1 <- as.numeric(ML4$DLK1)
+ML4$MMP11 <- as.numeric(ML4$MMP11)
+ML4$ACTC <- as.numeric(ML4$ACTC)
+ML4$PENK <- as.numeric(ML4$PENK)
+ML4$KIAA1199 <- as.numeric(ML4$KIAA1199)
+
+
+inTrain <- createDataPartition(y=ML4$KRT19, p=0.7, list=FALSE)
+
+trainingSet <- ML4[inTrain,]
+testingSet <- ML4[-inTrain,]
+
+```
+
+RandomForest, cross-validation (cv) = 5
+```{r}
+
+rfMod <- train(KRT19~., method='rf', data=(trainingSet), 
+               trControl=trainControl(method='cv'), number=5)
+```
+
+
+Run predictions on the testing set, altered so that the predicted value is within one standard deviations of the mean.
+```{r}
+predRF <- round(predict(rfMod, testingSet),0)
+
+predDF <- data.frame(predRF, KRT19_Value=testingSet$KRT19)
+predDF
+
+mu <- mean(testingSet$KRT19)
+sde <- sd(testingSet$KRT19)
+
+sum <- sum(predRF < (mu+sde)) 
+
+length <- length(testingSet$KRT19)
+accuracy_rfMod <- (sum/length) 
+accuracy_rfMod
+```
+
+All predicted values are within one standard deviation of the mean.
+
+```{r}
+results <- c(round(accuracy_rfMod,2), round(100,2))
+results <- as.factor(results)
+results <- t(data.frame(results))
+
+colnames(results) <- colnames(predDF)
+Results <- rbind(predDF, results) 
+Results
+```
+
+The above didn't get any of the predicted results exactly equal to the true value of the lowest expressed gene in fold change of UL/nonUL, but it did get every predicted value within one standard deviation of the sample mean.
+
+How about with the KNN algorithm.
+```{r, warning=FALSE}
+knnMod <- train(KRT19 ~ .,
+                method='knn', preProcess=c('center','scale'),
+                tuneLength=10, trControl=trainControl(method='cv'), data=trainingSet)
+```
+
+The accuracy seems to be better between 8 and 9 neighbors for classification from what the above plot is displaying.
+
+```{r, message=FALSE, warning=FALSE}
+rpartMod <- train(KRT19 ~ ., method='rpart', tuneLength=9, data=trainingSet) 
+```
+
+```{r, warning=FALSE}
+glmMod <- train(KRT19 ~ ., 
+                method='glm', data=trainingSet) 
+```
+
+
+```{r, warning=FALSE}
+predKNN <- predict(knnMod, testingSet)
+predRPART <- predict(rpartMod, testingSet)
+predGLM <- predict(glmMod, testingSet)
+```
+
+
+```{r}
+length=length(testingSet$KRT19)
+
+sumKNN <- sum(predKNN==testingSet$KRT19)
+sumRPart <- sum(predRPART==testingSet$KRT19)
+sumGLM <- sum(predGLM==testingSet$KRT19)
+
+accuracy_KNN <- sumKNN/length 
+accuracy_RPART <- sumRPart/length 
+accuracy_GLM <- sumGLM/length 
+
+predDF2 <- data.frame(predRF,predKNN,predRPART,predGLM, 
+                      KRT19=testingSet$KRT19)
+colnames(predDF2) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+
+results <- c(round(accuracy_rfMod,2),  
+             round(accuracy_KNN,2), 
+             round(accuracy_RPART,2),
+             round(accuracy_GLM,2), 
+             round(100,2))
+
+results <- as.factor(results)
+results <- t(data.frame(results))
+colnames(results) <- c('RandomForest','KNN','Rpart','GLM','TrueValue')
+Results <- rbind(predDF2, results) 
+Results
+
+```
+
+When it comes to regression on numeric values and using the five highest expressed genes to predict the value of the lowest expressed gene in each sample of UL or nonUL, the results were far from useful. Every algorithm scored 0% but the random forest which was modified to gain accuracty if the prediction is within 1 standard deviation of the sample mean in which case it scored 100%. But would have also scored 0% as the other algorithms have.
+
 
