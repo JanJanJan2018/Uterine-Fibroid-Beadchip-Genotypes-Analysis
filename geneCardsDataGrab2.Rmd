@@ -7,12 +7,17 @@ output:
   html_document: default
 ---
 
+
 This is a script that can work in combination with another function I made in a separate post, that returns the fold change on gene expression samples, by returning a list of 25 top genes for a protein such as 'androgen' from genecards.org. That function is named find25genes() and has one character argument of the protein you want the top 25 genes associated with. Then another function that will return the Entrez, Genecards, and UniProtKB gene summaries for each gene in a separate function getGeneSummaries(gene,protein) with two character arguments for the gene and protein. The tables will be combined if you use the separate functions after running each of the previous functions, getProteinGenes() and getGeneSummaries(), where the argument is a character argument of the name of the protein to read them in and combine the header and gene data, this will return the table to the screen but won't read it in, but will give the file name to read in. Or go into the directory and add the header to the table yourself. This was done this way to alter the script later to combine the gene summaries to all the genes and a table that each gene is appended to with the summaries. 
+
+Note that knitr doesn't read in the webpage, but it works fine within Rstudio. Some bugs with the rvest package or knitr. The other html webpages like Indeed.com work with knitr and rvest, not sure why this website doesn't work with both rvest and knitr.
+
 ```{r}
 #Loading the rvest package
 library(rvest)
 library(lubridate)
 library(dplyr)
+library(httr)
 ```
  
 ```{r}
@@ -33,13 +38,16 @@ if (dir.exists(Gene_Path)){
 This function will return a table and header as separate csv files for the top 25 genes that genecards.org lists for a protein searched. Such as 'estrogen' or 'androgen' or even 'protein.'
 ```{r}
 find25genes <- function(protein){
+  
   url <- 'https://www.genecards.org/Search/Keyword?queryString=protein'
    
   protein <- as.character(protein)
   protein <- tolower(protein)
+  protein <- gsub(' ','%20',protein)
   
+  url <- as.character(url)
   url <- gsub('protein',protein, url)
-
+  
   webpage <- read_html(url)
   
   protein_html <- html_nodes(webpage,'.symbol-col a')
@@ -54,14 +62,15 @@ find25genes <- function(protein){
   date <- as.data.frame(rep(date(),length(Protein$proteinType)))
   colnames(date) <- 'todaysDate'
   
-  proteinName <- as.data.frame(rep(protein,length(Protein$proteinType)))
+  protein2 <- gsub('%20','-',protein)
+
+  proteinName <- as.data.frame(rep(protein2,length(Protein$proteinType)))
   colnames(proteinName) <- 'proteinSearched'
   
   tableProtein <- cbind(Protein,proteinName,date)
   
   setwd(Gene_Path)
   
-  protein2 <- gsub(' ','-',protein)
 
   write.table(tableProtein, 
               paste(protein2,".csv",sep=''), append=TRUE,
@@ -88,6 +97,7 @@ Function to combine the data with the header and return the table for the 25 gen
 getProteinGenes <- function(protein){
   protein <- as.character(protein)
   protein <- tolower(protein)
+  protein <- gsub(' ','-',protein)
   table <- read.csv(paste(Gene_Path,'/',protein,'.csv',sep=''),sep=',',
                     header=F,na.strings=c('',' ','NA'), stringsAsFactors = F)
   header <- read.csv(paste(Gene_Path,'/tableProteinHeader_',protein,'.csv',sep=''),
@@ -113,9 +123,11 @@ getSummaries <- function(gene,protein){
    
   protein <- as.character(protein)
   protein <- tolower(protein)
+  protein <- gsub(' ',',',protein)
   gene <- as.character(gene)
   gene <- tolower(gene)
   
+  url <- as.character(url)
   url <- gsub('GENE',gene,url)
   url <- gsub('protein',protein, url)
 
@@ -151,18 +163,19 @@ getSummaries <- function(gene,protein){
   
   date <- as.data.frame(rep(date(),length(Entrez1$EntrezSummary)))
   colnames(date) <- 'todaysDate'
-  
-  proteinName <- as.data.frame(rep(protein,length(Entrez1$EntrezSummary)))
+    
+  protein2 <- gsub(',','-',protein)
+
+  proteinName <- as.data.frame(rep(protein2,length(Entrez1$EntrezSummary)))
   colnames(proteinName) <- 'proteinSearched'
   
-  gene <- as.data.frame(rep(gene,length(Entrez1$EntrezSummary)))
+  gene <- as.data.frame(rep(toupper(gene),length(Entrez1$EntrezSummary)))
   colnames(gene) <- 'gene'
   
   tableProtein <- cbind(proteinName,gene,Entrez1,GeneCards1,UniProtKB1,date)
   
   setwd(Gene_Path)
   
-  protein2 <- gsub(' ','-',protein)
 
   write.table(tableProtein, 
               paste(protein2,"summary.csv",sep=''), append=TRUE,
@@ -189,6 +202,7 @@ This function reads in the gene summaries, entrez,genecards, and uniprotKB for t
 getGeneSummaries <- function(protein){
   protein <- as.character(protein)
   protein <- tolower(protein)
+  protein <- gsub(' ','-',protein)
   
   table <- read.csv(paste(Gene_Path,'/',protein,'summary.csv',sep=''),
                     sep=',',header=F,na.strings=c('',' ','NA'), stringsAsFactors = F)
@@ -197,6 +211,7 @@ getGeneSummaries <- function(protein){
                      sep=',', header=T, na.strings=c('',' ','NA'), stringsAsFactors = F)
   names <- header$x
   colnames(table) <- names
+
   fileName <- paste('proteinGeneSummaries_',protein,'.csv',sep='')
   write.csv(table, fileName, row.names=FALSE)
   return(list(table,fileName))
@@ -397,137 +412,23 @@ getMeanMedian('TP53')
 ```
 It looks like the gene TP53 is expressed much more in the uterine leiomyoma, which is a tumor. This makes sense.
 
+Lets use a different protein as double word search in genecards.org, 'hair loss' to be exact.
 ```{r}
-
+find25genes('hair loss')
 ```
 
 
 ```{r}
-
+getProteinGenes('hair loss')
 ```
 
 
 ```{r}
-
+getSummaries('IGF1','hair loss')
 ```
 
 
 ```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
+getGeneSummaries('hair loss')
 ```
 
