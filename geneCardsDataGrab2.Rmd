@@ -1,0 +1,533 @@
+---
+title: "genecards data grab"
+author: "Janis Corona"
+date: "7/26/2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+This is a script that can work in combination with another function I made in a separate post, that returns the fold change on gene expression samples, by returning a list of 25 top genes for a protein such as 'androgen' from genecards.org. That function is named find25genes() and has one character argument of the protein you want the top 25 genes associated with. Then another function that will return the Entrez, Genecards, and UniProtKB gene summaries for each gene in a separate function getGeneSummaries(gene,protein) with two character arguments for the gene and protein. The tables will be combined if you use the separate functions after running each of the previous functions, getProteinGenes() and getGeneSummaries(), where the argument is a character argument of the name of the protein to read them in and combine the header and gene data, this will return the table to the screen but won't read it in, but will give the file name to read in. Or go into the directory and add the header to the table yourself. This was done this way to alter the script later to combine the gene summaries to all the genes and a table that each gene is appended to with the summaries. 
+```{r}
+#Loading the rvest package
+library(rvest)
+library(lubridate)
+library(dplyr)
+```
+ 
+```{r}
+Gene_Path <- './gene scrapes'
+```
+ 
+This next chunk of code will erase your data if you already have it stored.
+```{r}
+if (dir.exists(Gene_Path)){
+  unlink(Gene_Path, recursive=TRUE)
+  dir.create(Gene_Path)
+} else {
+  dir.create(Gene_Path)
+}
+```
+
+
+This function will return a table and header as separate csv files for the top 25 genes that genecards.org lists for a protein searched. Such as 'estrogen' or 'androgen' or even 'protein.'
+```{r}
+find25genes <- function(protein){
+  url <- 'https://www.genecards.org/Search/Keyword?queryString=protein'
+   
+  protein <- as.character(protein)
+  protein <- tolower(protein)
+  
+  url <- gsub('protein',protein, url)
+
+  webpage <- read_html(url)
+  
+  protein_html <- html_nodes(webpage,'.symbol-col a')
+  protein1 <- html_text(protein_html)
+  
+  Protein <- as.data.frame(protein1)
+  colnames(Protein) <- 'proteinType'
+  Protein$proteinType <- as.character(paste(Protein$proteinType))
+  Protein$proteinType <- gsub('\n','',Protein$proteinType)
+  
+  
+  date <- as.data.frame(rep(date(),length(Protein$proteinType)))
+  colnames(date) <- 'todaysDate'
+  
+  proteinName <- as.data.frame(rep(protein,length(Protein$proteinType)))
+  colnames(proteinName) <- 'proteinSearched'
+  
+  tableProtein <- cbind(Protein,proteinName,date)
+  
+  setwd(Gene_Path)
+  
+  protein2 <- gsub(' ','-',protein)
+
+  write.table(tableProtein, 
+              paste(protein2,".csv",sep=''), append=TRUE,
+              col.names=FALSE, sep=",", quote=TRUE,qmethod="double",
+              row.names=FALSE)
+  names <- colnames(tableProtein)
+  write.csv(names,paste('tableProteinHeader_',protein2,'.csv',sep=''),row.names=FALSE)
+  
+  setwd('../')
+ 
+  
+  
+}
+```
+
+
+
+```{r}
+find25genes('estrogen')
+```
+
+Function to combine the data with the header and return the table for the 25 genes collected on the protein searched in genecards.org with the find25genes().
+```{r}
+getProteinGenes <- function(protein){
+  protein <- as.character(protein)
+  protein <- tolower(protein)
+  table <- read.csv(paste(Gene_Path,'/',protein,'.csv',sep=''),sep=',',
+                    header=F,na.strings=c('',' ','NA'), stringsAsFactors = F)
+  header <- read.csv(paste(Gene_Path,'/tableProteinHeader_',protein,'.csv',sep=''),
+                     sep=',', header=T, na.strings=c('',' ','NA'), stringsAsFactors = F)
+  names <- header$x
+  colnames(table) <- names
+  fileName <- paste('Top25',protein,'s.csv',sep='')
+  write.csv(table, fileName, row.names=FALSE)
+  return(list(table,fileName))
+}
+
+```
+
+```{r}
+getProteinGenes('estrogen')
+```
+
+
+This next function will get the gene summaries for one of the genes you get from the previous function and enter in as the first argument, and the second argument is the protein entered to get the 25 genes with the find25genes().
+```{r}
+getSummaries <- function(gene,protein){
+  url <- 'https://www.genecards.org/cgi-bin/carddisp.pl?gene=GENE&keywords=protein'
+   
+  protein <- as.character(protein)
+  protein <- tolower(protein)
+  gene <- as.character(gene)
+  gene <- tolower(gene)
+  
+  url <- gsub('GENE',gene,url)
+  url <- gsub('protein',protein, url)
+
+  webpage <- read_html(url)
+  
+  Entrez_html <- html_nodes(webpage, '.gc-section-header+ .gc-subsection p')
+  Entrez <- html_text(Entrez_html) 
+
+  GeneCards_html <- html_nodes(webpage, '.gc-subsection-header+ p')
+  GeneCards <- html_text(GeneCards_html) 
+
+  UniProt_html <- html_nodes(webpage, '#summaries li:nth-child(1) div')
+  UniProtKB <- html_text(UniProt_html) 
+
+  Entrez1 <- as.data.frame(Entrez)
+  colnames(Entrez1) <- 'EntrezSummary'
+  
+  GeneCards1 <- as.data.frame(GeneCards)
+  colnames(GeneCards1) <- 'GeneCardsSummary'
+  
+  UniProtKB1 <- as.data.frame(UniProtKB)
+  colnames(UniProtKB1) <- 'UniProtKB_Summary'
+  
+  Entrez1$EntrezSummary <- as.character(paste(Entrez1$EntrezSummary))
+  Entrez1$EntrezSummary <- gsub('\n','',Entrez1$EntrezSummary)
+  
+  GeneCards1$GeneCardsSummary <- as.character(paste(GeneCards1$GeneCardsSummary))
+  GeneCards1$GeneCardsSummary <- gsub('\n','',GeneCards1$GeneCardsSummary)
+  
+  UniProtKB1$UniProtKB_Summary <- as.character(paste(UniProtKB1$UniProtKB_Summary))
+  UniProtKB1$UniProtKB_Summary <- gsub('\n','',UniProtKB1$UniProtKB_Summary)
+  
+  
+  date <- as.data.frame(rep(date(),length(Entrez1$EntrezSummary)))
+  colnames(date) <- 'todaysDate'
+  
+  proteinName <- as.data.frame(rep(protein,length(Entrez1$EntrezSummary)))
+  colnames(proteinName) <- 'proteinSearched'
+  
+  gene <- as.data.frame(rep(gene,length(Entrez1$EntrezSummary)))
+  colnames(gene) <- 'gene'
+  
+  tableProtein <- cbind(proteinName,gene,Entrez1,GeneCards1,UniProtKB1,date)
+  
+  setwd(Gene_Path)
+  
+  protein2 <- gsub(' ','-',protein)
+
+  write.table(tableProtein, 
+              paste(protein2,"summary.csv",sep=''), append=TRUE,
+              col.names=FALSE, sep=",", quote=TRUE,qmethod="double",
+              row.names=FALSE)
+  names <- colnames(tableProtein)
+  write.csv(names,paste('geneHeader_summary_',protein2,'.csv',sep=''),row.names=FALSE)
+  
+  setwd('../')
+ 
+}
+
+
+```
+
+
+```{r}
+getSummaries('TP53','estrogen')
+```
+
+
+This function reads in the gene summaries, entrez,genecards, and uniprotKB for the protein data collected from the getSummaries().
+```{r}
+getGeneSummaries <- function(protein){
+  protein <- as.character(protein)
+  protein <- tolower(protein)
+  
+  table <- read.csv(paste(Gene_Path,'/',protein,'summary.csv',sep=''),
+                    sep=',',header=F,na.strings=c('',' ','NA'), stringsAsFactors = F)
+  
+  header <- read.csv(paste(Gene_Path,'/geneHeader_summary_',protein,'.csv',sep=''),
+                     sep=',', header=T, na.strings=c('',' ','NA'), stringsAsFactors = F)
+  names <- header$x
+  colnames(table) <- names
+  fileName <- paste('proteinGeneSummaries_',protein,'.csv',sep='')
+  write.csv(table, fileName, row.names=FALSE)
+  return(list(table,fileName))
+}
+
+```
+
+
+
+
+```{r}
+getGeneSummaries('estrogen')
+```
+
+***
+
+
+Lets take a look at that script published earlier in the month:
+
+
+files located at: https://github.com/JanJanJan2018/Uterine-Fibroid-Beadchip-Genotypes-Analysis
+
+These files are from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE593
+and https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GPL96
+Note that there are only 5 samples of each class of uterine leiomyoma (UL) or nonUL
+all the gene related information was obtained from genecards.org
+
+Gene expression in a cell sample of tissue can mean the cell is creating more proteins needed in the body that are needed to maintain its living functions or are being enhanced or reduced or modified due to external factors such as environment, chemical, radiation, health disturbances like a viral infections.
+
+"Several steps in the gene expression process may be modulated, including the transcription, RNA splicing, translation, and post-translational modification of a protein. Gene regulation gives the cell control over structure and function, and is the basis for cellular differentiation, morphogenesis and the versatility and adaptability of any organism."
+{Gene expression - Wikipedia, en.wikipedia.org/wiki/Gene_expression}
+
+This study is done as a quick look into genes expressed by microarray sheets that have 1 or more array cells for the same gene when collected. Each gene can be measured in each sample depending on how many times it is seen in that microarray design in the lab. For more information on how these genes were collected and measured for the study obtained at the link above to visit the National Center for Bioinformatics Information (NCBI) for the GSE593 study in the Gene Expression Omnibus (GEO).
+
+```{r}
+library(ggplot2)
+library(DT)
+
+```
+
+Lets build our tables by reading them in for the ULs and nonULs.
+```{r}
+ul <- read.delim('UL_GSE593_GPL96.csv', sep=',', header=TRUE, comment.char='#',
+                 na.strings=c('',' ','NA'), stringsAsFactors = TRUE)
+
+non_ul <- read.delim('nonUL_GSE593_GPL96.csv', sep=',', header=TRUE, comment.char='#',
+                 na.strings=c('',' ','NA'), stringsAsFactors = TRUE)
+
+```
+
+```{r}
+head(ul)
+```
+
+
+```{r}
+colnames(ul)
+```
+
+Lets select only the samples and the gene symbol columns.
+```{r}
+UL <- ul[,c(6,8:12)]
+nonUL <- non_ul[,c(6,8:12)]
+
+```
+
+Next, we will split the gene symbol column that has multiple entries into the first three entries as lists to add to our tables and pull from
+```{r}
+ulList <- as.character(UL$Gene.Symbol)
+list <- strsplit(ulList,split=' /// ')
+first <- lapply(list, '[',1)
+second <- lapply(list, '[',2)
+third <- lapply(list, '[',3)
+
+UL$first <- as.character(first)
+UL$second <- as.character(second)
+UL$third <- as.character(third)
+
+nonulList <- as.character(nonUL$Gene.Symbol)
+list2 <- strsplit(nonulList,split=' /// ')
+first <- lapply(list2, '[',1)
+second <- lapply(list2, '[',2)
+third <- lapply(list2, '[',3)
+
+nonUL$first <- as.character(first)
+nonUL$second <- as.character(second)
+nonUL$third <- as.character(third)
+```
+
+Next, we will build the function to grab the gene by its gene symbol and return the fold change of the UL to nonUL ratio from the means and medians of our total genes across all five samples.
+This function is modified to write the information to a table for the UL and nonUL information.
+Make sure the files aren't in this folder or write to a separate folder.
+```{r}
+if (dir.exists('./UL and nonUL foldchange tables')){
+  unlink('./UL and nonUL foldchange tables', recursive=TRUE)
+  dir.create('./UL and nonUL foldchange tables')
+} else {
+  dir.create('./UL and nonUL foldchange tables')
+}
+
+
+```
+
+```{r}
+getMeanMedian <- function(gene){
+  gene <- as.character(paste(gene))
+  gene0_ul <- UL[grep(gene,UL$Gene.Symbol),]
+  gene0_nonul <- nonUL[grep(gene,UL$Gene.Symbol),]
+  
+  sub_ul <- subset(gene0_ul, gene0_ul$Gene.Symbol==gene |
+                     gene0_ul$first==gene |
+                     gene0_ul$third==gene |
+                     gene0_ul$second==gene)
+  
+  sub_nonul <- subset(gene0_nonul, gene0_nonul$Gene.Symbol==gene|
+                     gene0_nonul$first==gene |
+                     gene0_nonul$third==gene |
+                     gene0_nonul$second==gene)
+    
+  gene1_UL <- sub_ul[,2:6]
+  gene1_nonUL <- sub_nonul[,2:6]
+  
+  gene1_UL$mean <- apply(gene1_UL,1,mean)
+  gene1_UL$median <- apply(gene1_UL,1,median)
+  gene1_nonUL$mean <- apply(gene1_nonUL,1,mean)
+  gene1_nonUL$median <- apply(gene1_nonUL,1,median)
+  
+  gene1_UL$FoldChange_mean <- gene1_UL$mean/gene1_nonUL$mean
+  gene1_UL$FoldChange_median <- gene1_UL$median/gene1_nonUL$median
+  
+  geneMeans <- gene1_UL$FoldChange_mean
+  
+  geneMedians <- gene1_UL$FoldChange_median
+  
+  
+  print('The foldchage of UL means to nonUL means is:')
+  print(geneMeans)
+  
+  print('The foldchage of UL medians to nonUL medians is:')
+  print(geneMedians)
+  
+  colnames(gene1_UL) <- paste(colnames(gene1_UL), '_UL')
+  colnames(gene1_nonUL) <- paste(colnames(gene1_nonUL), '_nonUL')
+  
+  setwd('./UL and nonUL foldchange tables')
+  
+  write.table(gene1_UL[2:length(gene1_UL$median),], "allGenesUL.csv", append=TRUE, 
+              col.names=FALSE, sep=",",
+              row.names=TRUE)
+  UL_names <- colnames(gene1_UL)
+  write.csv(UL_names,'header_UL_names.csv',row.names=FALSE)
+
+  write.table(gene1_nonUL[2:length(gene1_nonUL$median),], "allGenesNonUL.csv", append=TRUE, 
+              col.names=FALSE, sep=",",
+              row.names=TRUE)
+  nonUL_names <- colnames(gene1_nonUL)
+  
+  write.csv(nonUL_names,'header_nonUL_names.csv', row.names=FALSE)
+  
+  setwd('../')
+  
+  return(list(gene1_UL,gene1_nonUL))
+}
+
+```
+
+Lets look at the iron gene expression of transferrin in UL compared to nonUL
+```{r}
+getMeanMedian("TF")
+```
+
+
+Now that we have a function to get the top genes for a protein, in this case 'tumor,' we can look up other genes related to 'tumor' such as 'TF' and get the summaries without having to visit the site genecards.org and enter in each gene.Lets try it now.
+
+Lets look at the top 25 genes for 'tumor' and then get the summaries.
+```{r}
+find25genes('tumor')
+```
+
+Print out the top 25 genes for the protein searched.
+```{r}
+getProteinGenes('tumor')
+```
+
+Grab the gene summaries for a particular gene and the protein interested in.
+```{r}
+getSummaries('TP53','tumor')
+```
+
+Print the results for one of the genes and the protein searched.
+```{r}
+getGeneSummaries('tumor')
+```
+
+Now lets look at how this gene does in UL tissue compared to non-UL tissue as far as fold change goes, with the ration of gene expression in UL/non-UL samples as a median and mean.
+```{r}
+getMeanMedian('TP53')
+```
+It looks like the gene TP53 is expressed much more in the uterine leiomyoma, which is a tumor. This makes sense.
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
